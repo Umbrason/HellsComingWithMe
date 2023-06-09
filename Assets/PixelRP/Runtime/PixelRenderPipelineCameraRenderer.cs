@@ -21,9 +21,6 @@ public partial class PixelRenderPipelineCameraRenderer
     private static int environmentColorAttachmentID = Shader.PropertyToID("_EnvColor0");
     private static int environmentDepthAttachmentID = Shader.PropertyToID("_EnvDepth0");
 
-    private static int environmentColor2xAttachmentID = Shader.PropertyToID("_EnvColor2x");
-    private static int environmentDepth2xAttachmentID = Shader.PropertyToID("_EnvDepth2x");
-
     private static int characterColorAttachmentID = Shader.PropertyToID("_CharacterColor0");
     private static int characterDepthAttachmentID = Shader.PropertyToID("_CharacterDepth0");
 
@@ -40,10 +37,8 @@ public partial class PixelRenderPipelineCameraRenderer
     private void SetupEnvironmentTargets(Vector2Int environmentResolution)
     {
         buffer.GetTemporaryRT(environmentColorAttachmentID, environmentResolution.x, environmentResolution.y, 0, FilterMode.Trilinear);
-        buffer.GetTemporaryRT(environmentDepthAttachmentID, environmentResolution.x, environmentResolution.y, 24, FilterMode.Trilinear, UnityEngine.Experimental.Rendering.GraphicsFormat.None);
-        buffer.GetTemporaryRT(environmentColor2xAttachmentID, environmentResolution.x * 2, environmentResolution.y * 2, 0, FilterMode.Trilinear);
-        buffer.GetTemporaryRT(environmentDepth2xAttachmentID, environmentResolution.x * 2, environmentResolution.y * 2, 24, FilterMode.Trilinear, UnityEngine.Experimental.Rendering.GraphicsFormat.None);
-        buffer.SetRenderTarget(color: environmentColor2xAttachmentID, depth: environmentDepth2xAttachmentID);
+        buffer.GetTemporaryRT(environmentDepthAttachmentID, environmentResolution.x, environmentResolution.y, 24, FilterMode.Trilinear, UnityEngine.Experimental.Rendering.GraphicsFormat.None);        
+        buffer.SetRenderTarget(color: environmentColorAttachmentID, depth: environmentDepthAttachmentID);
         context.ExecuteCommandBuffer(buffer);
         buffer.Clear();
     }
@@ -51,9 +46,7 @@ public partial class PixelRenderPipelineCameraRenderer
     private void ReleaseTempRTs()
     {
         buffer.ReleaseTemporaryRT(environmentColorAttachmentID);
-        buffer.ReleaseTemporaryRT(environmentDepthAttachmentID);
-        buffer.ReleaseTemporaryRT(environmentColor2xAttachmentID);
-        buffer.ReleaseTemporaryRT(environmentDepth2xAttachmentID);
+        buffer.ReleaseTemporaryRT(environmentDepthAttachmentID);        
         buffer.ReleaseTemporaryRT(characterColorAttachmentID);
         buffer.ReleaseTemporaryRT(characterDepthAttachmentID);
         context.ExecuteCommandBuffer(buffer);
@@ -79,7 +72,6 @@ public partial class PixelRenderPipelineCameraRenderer
         SetupEnvironmentTargets(environmentResolution);
         ClearRenderTarget();
         DrawEnvironment();
-        MedianFilterEnvironment(environmentResolution);
         EndSample();
 
 
@@ -125,37 +117,6 @@ public partial class PixelRenderPipelineCameraRenderer
     {
         buffer.EndSample(Samples.Pop());
         buffer.name = Samples.Count > 0 ? Samples.Peek() : this.DefaultSampleName;
-    }
-    #endregion
-
-    #region Median Filter
-
-    private Material MedianBlitMaterial => cached_MedianBlitMaterial ??= MedianBlitShader ? new Material(MedianBlitShader) : null;
-    private Material cached_MedianBlitMaterial;
-
-    private Shader MedianBlitShader => cached_MedianBlitShader ??= Shader.Find("Hidden/MedianDownscale");
-    private Shader cached_MedianBlitShader;
-
-    private void MedianFilterEnvironment(Vector2 srcRes)
-    {
-        if (MedianBlitMaterial == null) return;
-        BeginSample("Median Filter Environment");
-
-        buffer.SetRenderTarget(environmentColorAttachmentID, environmentDepthAttachmentID);
-
-        var srcColorIdentifier = new RenderTargetIdentifier(nameID: environmentColor2xAttachmentID);
-        var srcDepthIdentifier = new RenderTargetIdentifier(nameID: environmentDepth2xAttachmentID);
-        buffer.SetGlobalTexture("_BlitSrcColor", srcColorIdentifier, RenderTextureSubElement.Color);
-        buffer.SetGlobalTexture("_BlitSrcDepth", srcDepthIdentifier, RenderTextureSubElement.Depth);
-
-        var texelSize = new Vector4(1f / srcRes.x, 1f / srcRes.y, srcRes.x, srcRes.y);
-        buffer.SetGlobalVector("_BlitSrcColor_TexelSize", texelSize);
-        buffer.SetGlobalVector("_BlitSrcDepth_TexelSize", texelSize);
-
-        buffer.DrawProcedural(Matrix4x4.identity, MedianBlitMaterial, 0, MeshTopology.Triangles, 3, 1);
-        context.ExecuteCommandBuffer(buffer);
-        buffer.Clear();
-        EndSample();
     }
     #endregion
 
