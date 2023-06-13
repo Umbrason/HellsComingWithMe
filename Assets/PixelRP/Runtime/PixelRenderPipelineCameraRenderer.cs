@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -37,7 +38,7 @@ public partial class PixelRenderPipelineCameraRenderer
     private void SetupEnvironmentTargets(Vector2Int environmentResolution)
     {
         buffer.GetTemporaryRT(environmentColorAttachmentID, environmentResolution.x, environmentResolution.y, 0, FilterMode.Trilinear);
-        buffer.GetTemporaryRT(environmentDepthAttachmentID, environmentResolution.x, environmentResolution.y, 24, FilterMode.Trilinear, UnityEngine.Experimental.Rendering.GraphicsFormat.None);        
+        buffer.GetTemporaryRT(environmentDepthAttachmentID, environmentResolution.x, environmentResolution.y, 24, FilterMode.Trilinear, UnityEngine.Experimental.Rendering.GraphicsFormat.None);
         buffer.SetRenderTarget(color: environmentColorAttachmentID, depth: environmentDepthAttachmentID);
         context.ExecuteCommandBuffer(buffer);
         buffer.Clear();
@@ -46,7 +47,7 @@ public partial class PixelRenderPipelineCameraRenderer
     private void ReleaseTempRTs()
     {
         buffer.ReleaseTemporaryRT(environmentColorAttachmentID);
-        buffer.ReleaseTemporaryRT(environmentDepthAttachmentID);        
+        buffer.ReleaseTemporaryRT(environmentDepthAttachmentID);
         buffer.ReleaseTemporaryRT(characterColorAttachmentID);
         buffer.ReleaseTemporaryRT(characterDepthAttachmentID);
         context.ExecuteCommandBuffer(buffer);
@@ -64,14 +65,18 @@ public partial class PixelRenderPipelineCameraRenderer
     {
         var environmentResolution = resolutionSettings.CalculateResolution(camera.pixelRect.size);
         context.SetupCameraProperties(camera);
+        if (!camera.TryGetCullingParameters(out var cullingParameters)) return;
+        var cullingResults = context.Cull(ref cullingParameters);
         ClearRenderTarget();
 
         BeginSample(DefaultSampleName);
 
+        SetupLights(cullingResults);
+
         BeginSample("Draw Environment");
         SetupEnvironmentTargets(environmentResolution);
         ClearRenderTarget();
-        DrawEnvironment();
+        DrawEnvironment(cullingResults);
         EndSample();
 
 
@@ -79,7 +84,7 @@ public partial class PixelRenderPipelineCameraRenderer
         SetupCharacterTargets();
         ClearRenderTarget();
         UpscaleEnvironment(environmentResolution, camera.pixelRect.size);
-
+        DrawCharacters(cullingResults);
         EndSample();
 
 
@@ -165,26 +170,74 @@ public partial class PixelRenderPipelineCameraRenderer
     }
     #endregion
 
+    #region Light
+
+    private static int directionalLightCountId = Shader.PropertyToID("_DirectionalLightCount");
+    private static int directionalLightColorId = Shader.PropertyToID("_DirectionalLightColors");
+    private static int directionalLightDirectionId = Shader.PropertyToID("_DirectionalLightDirections");
+
+    private const int MAX_DIR_LIGHTS_COUNT = 4;
+    private Vector4[] directionalLightColors = new Vector4[4];
+    private Vector4[] directionalLightDirections = new Vector4[4];
+    private void SetupLights(CullingResults cullingResults)
+    {
+        var lights = cullingResults.visibleLights;
+        dirLightIndex = 0;
+        for (int i = 0; i < lights.Length; i++)
+        {
+            var light = lights[i];
+            if (light.lightType != UnityEngine.LightType.Directional) continue;
+            SetupDirLight(light);
+        }
+        buffer.SetGlobalInt(directionalLightCountId, dirLightIndex);
+        buffer.SetGlobalVectorArray(directionalLightColorId, directionalLightColors);
+        buffer.SetGlobalVectorArray(directionalLightDirectionId, directionalLightDirections);
+        context.ExecuteCommandBuffer(buffer);
+        buffer.Clear();
+    }
+
+    private int dirLightIndex = 0;
+    private void SetupDirLight(VisibleLight light)
+    {
+        if (dirLightIndex >= MAX_DIR_LIGHTS_COUNT) return;
+        directionalLightColors[dirLightIndex] = light.finalColor;
+        directionalLightDirections[dirLightIndex] = -light.localToWorldMatrix.GetColumn(2).normalized;
+        dirLightIndex++;
+    }
+    #endregion
+
     private static ShaderTagId UnlitLightMode = new ShaderTagId("SRPDefaultUnlit");
-    private static FilteringSettings OpaqueFilterSettings = new()
+    private static FilteringSettings EnvironmentOpaqueFilterSettings = new()
     {
         layerMask = -1,
         renderQueueRange = RenderQueueRange.opaque,
         sortingLayerRange = SortingLayerRange.all,
-        renderingLayerMask = uint.MaxValue,
+        renderingLayerMask = 1,
     };
-    private static FilteringSettings TransparentFilterSettings = new()
+    private static FilteringSettings EnvironmentTransparentFilterSettings = new()
     {
         layerMask = -1,
         renderQueueRange = RenderQueueRange.transparent,
         sortingLayerRange = SortingLayerRange.all,
-        renderingLayerMask = uint.MaxValue,
+        renderingLayerMask = 1,
     };
 
+    private static FilteringSettings CharacterOpaqueFilterSettings = new()
+    {
+        layerMask = -1,
+        renderQueueRange = RenderQueueRange.opaque,
+        sortingLayerRange = SortingLayerRange.all,
+        renderingLayerMask = 1 << 1,
+    };
+    private static FilteringSettings CharacterTransparentFilterSettings = new()
+    {
+        layerMask = -1,
+        renderQueueRange = RenderQueueRange.transparent,
+        sortingLayerRange = SortingLayerRange.all,
+        renderingLayerMask = 1 << 1,
+    };
 
-
-
-    void DrawEnvironment()
+    void DrawEnvironment(CullingResults cullingResults)
     {
         DrawingSettings OpaqueDrawSettings = new(
             UnlitLightMode,
@@ -194,14 +247,34 @@ public partial class PixelRenderPipelineCameraRenderer
             UnlitLightMode,
             new SortingSettings(camera) { criteria = SortingCriteria.CommonTransparent }
         );
-        if (!camera.TryGetCullingParameters(out var cullingParameters)) return;
-        var cullingResults = context.Cull(ref cullingParameters);
-
         context.ExecuteCommandBuffer(buffer);
         buffer.Clear();
-        context.DrawRenderers(cullingResults, ref OpaqueDrawSettings, ref OpaqueFilterSettings);
-        //context.DrawSkybox(camera);
-        context.DrawRenderers(cullingResults, ref TransparentDrawSettings, ref TransparentFilterSettings);
+        context.DrawRenderers(cullingResults, ref OpaqueDrawSettings, ref EnvironmentOpaqueFilterSettings);
+        context.DrawSkybox(camera);
+        context.DrawRenderers(cullingResults, ref TransparentDrawSettings, ref EnvironmentTransparentFilterSettings);
+    }
+
+    void DrawCharacters(CullingResults cullingResults)
+    {
+        DrawingSettings OpaqueDrawSettings = new(
+            UnlitLightMode,
+            new SortingSettings(camera) { criteria = SortingCriteria.CommonOpaque }
+        )
+        {
+            enableDynamicBatching = false
+        };
+        DrawingSettings TransparentDrawSettings = new(
+            UnlitLightMode,
+            new SortingSettings(camera) { criteria = SortingCriteria.CommonTransparent }
+        )
+        {
+            enableDynamicBatching = false
+        };
+        context.ExecuteCommandBuffer(buffer);
+        buffer.Clear();
+
+        context.DrawRenderers(cullingResults, ref OpaqueDrawSettings, ref CharacterOpaqueFilterSettings);
+        context.DrawRenderers(cullingResults, ref TransparentDrawSettings, ref CharacterTransparentFilterSettings);
     }
 
     partial void DrawSceneGizmos();

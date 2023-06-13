@@ -3,6 +3,7 @@ Shader "Lit/Phong"
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        _MainColor ("Color", Color) = (.9, .8, .2, 1)
     }
     SubShader
     {
@@ -15,46 +16,46 @@ Shader "Lit/Phong"
             CGPROGRAM
             #pragma multi_compile_instancing
             #pragma vertex vert
-            #pragma fragment frag                        
-
-            struct appdata
-            {
-                float4 vertex : POSITION;
-                float3 normal : NORMAL;
-                float2 uv : TEXCOORD0;
-            };
-
-            struct v2f
-            {
-                float2 uv : TEXCOORD0;
-                float3 normal : NORMAL;
-                float4 vertex : SV_POSITION;
-            };
+            #pragma fragment frag
+            
+            #include <"Assets/PixelRP/Shaderlibrary/Lighting.hlsl">
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
+            float4 _MainColor;
 
-            v2f vert (appdata v)
+            struct Attributes
             {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.normal = mul( unity_ObjectToWorld, float4( v.normal, 0.0 ) ).xyz;
-                o.normal /= length(o.normal);
-                o.uv = v.uv;
-                return o;
-            }            
-
-            float smoothstep(float x, float edge0, float edge1)
+                float3 posOS    : POSITION;
+                float3 normalOS : NORMAL;
+                float3 uv       : TEXCOORD0;
+            };
+            
+            struct Varyings
             {
-                float t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
-                return t * t * (3.0 - 2.0 * t);
+                float4 posCS    : POSITION;
+                float3 normalWS : NORMAL;
+                float3 uv       : TEXCOORD0;
+            };
+            
+            Varyings vert(Attributes attributes)
+            {
+                Varyings varyings;
+                varyings.posCS = UnityObjectToClipPos(attributes.posOS);
+                varyings.normalWS = normalize(mul(unity_ObjectToWorld, float4(attributes.normalOS, 0)));
+                varyings.uv = attributes.uv;
+                return varyings;
             }
 
-            fixed4 frag (v2f i) : SV_Target
+            fixed4 frag(Varyings i) : SV_Target
             {
-                fixed4 col = tex2D(_MainTex, i.uv);
-                float brightness = dot(i.normal, float3(1,1,0) / 1.414);
-                return float4(.9, .8, .2, 1) * col * smoothstep(brightness, .5, .51) * .6 + .1;
+                Surface surface;
+                surface.normal = i.normalWS;
+                Light light = CalcLight(surface);
+
+                fixed4 col = tex2D(_MainTex, i.uv) * _MainColor;
+                fixed3 stylizedLight = smoothstep(.59, .6, light.color);
+                return float4(max(col * stylizedLight, .15), 1);
             }
             ENDCG
         }

@@ -7,12 +7,12 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Grass
-  m_Shader: {fileID: 4800000, guid: 97615930332430d4b964cf6fa0672ad6, type: 3}
+  m_Name: Unlit_BillboardSprite
+  m_Shader: {fileID: 4800000, guid: 910930e6910fc7640a8b3f79b42aef30, type: 3}
   m_ValidKeywords: []
   m_InvalidKeywords: []
   m_LightmapFlags: 4
-  m_EnableInstancingVariants: 1
+  m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
   stringTagMap: {}
@@ -26,8 +26,5 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats: []
-    m_Colors:
-    - _Color: {r: 0.6392157, g: 0.5803922, b: 0.21960786, a: 1}
-    - _ColorBase: {r: 0.3962264, g: 0.29587686, b: 0.19624421, a: 1}
-    - _ColorTip: {r: 0.61960787, g: 0.6313726, b: 0.21960786, a: 1}
+    m_Colors: []
   m_BuildTextureStacks: []

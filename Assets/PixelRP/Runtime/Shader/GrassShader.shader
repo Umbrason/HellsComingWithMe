@@ -56,8 +56,8 @@ Shader "Custom/SimplestInstancedShader"
             fixed4 frag(v2f i) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(i);
-                float t = i.objPos.y / .15;
-                t = smoothstep(t, .15,.6);
+                float t = i.objPos.y / .5;
+                t = smoothstep(t, .15,1);
 
                 return UNITY_ACCESS_INSTANCED_PROP(Props, _ColorTip) * t +
                        UNITY_ACCESS_INSTANCED_PROP(Props, _ColorBase) * (1 - t);
