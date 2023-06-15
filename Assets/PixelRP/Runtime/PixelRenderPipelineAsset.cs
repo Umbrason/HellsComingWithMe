@@ -1,7 +1,6 @@
 
 using UnityEngine;
 using UnityEngine.Rendering;
-using UnityEngine.UI;
 
 [CreateAssetMenu(menuName = "Rendering/PixelRPAsset")]
 public class PixelRenderPipelineAsset : RenderPipelineAsset

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using JetBrains.Annotations;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -8,6 +9,7 @@ public partial class PixelRenderPipelineCameraRenderer
     private Camera camera;
     private ScriptableRenderContext context;
     private PixelRenderPipelineAsset.IReadOnlyResolutionSettings resolutionSettings;
+    private PixelRenderPipelineAsset.IReadOnlyShadowSettings shadowSettings;
     private string DefaultSampleName;
     private static CommandBuffer buffer = new();
 
@@ -17,6 +19,8 @@ public partial class PixelRenderPipelineCameraRenderer
         this.camera = camera;
         this.resolutionSettings = resolutionSettings;
         this.DefaultSampleName = $"Render {camera.name}";
+        GraphicsSettings.useScriptableRenderPipelineBatching = true;
+
     }
 
     private static int environmentColorAttachmentID = Shader.PropertyToID("_EnvColor0");
@@ -72,6 +76,10 @@ public partial class PixelRenderPipelineCameraRenderer
         BeginSample(DefaultSampleName);
 
         SetupLights(cullingResults);
+        BeginSample("Draw Shadows");
+        SetupShadowmapTargets();
+        RenderShadowMap(cullingResults);
+        EndSample();
 
         BeginSample("Draw Environment");
         SetupEnvironmentTargets(environmentResolution);
@@ -206,7 +214,28 @@ public partial class PixelRenderPipelineCameraRenderer
     }
     #endregion
 
+
+    #region Shadows
+
+    private static int DirectionalShadowMapArray = Shader.PropertyToID("_DirectionalShadowMaps");
+    void SetupShadowmapTargets(int lightCount)
+    {
+        buffer.GetTemporaryRTArray(DirectionalShadowMapArray, camera.pixelWidth, camera.pixelHeight, lightCount, 24, FilterMode.Bilinear, UnityEngine.Experimental.Rendering.GraphicsFormat.None);
+        context.ExecuteCommandBuffer(buffer);
+        buffer.Clear();
+    }
+    void RenderShadowMap(CullingResults cullingResults)
+    {
+        var ShadowSettings = new ShadowDrawingSettings(cullingResults, 0);
+        buffer.SetRenderTarget(DirectionalShadowMapArray, 0, CubemapFace.Unknown, depthSlice: 0);
+        buffer.ClearRenderTarget(RTClearFlags.Depth, default, 1, 0);
+        context.DrawShadows(ref ShadowSettings);
+    }
+
+    #endregion
+
     private static ShaderTagId UnlitLightMode = new ShaderTagId("SRPDefaultUnlit");
+
     private static FilteringSettings EnvironmentOpaqueFilterSettings = new()
     {
         layerMask = -1,
@@ -253,7 +282,6 @@ public partial class PixelRenderPipelineCameraRenderer
         context.DrawSkybox(camera);
         context.DrawRenderers(cullingResults, ref TransparentDrawSettings, ref EnvironmentTransparentFilterSettings);
     }
-
     void DrawCharacters(CullingResults cullingResults)
     {
         DrawingSettings OpaqueDrawSettings = new(

@@ -22,7 +22,10 @@ Shader "Lit/Phong"
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
-            float4 _MainColor;
+            
+            cbuffer UnityPerMaterial {
+                float4 _MainColor;
+            };
 
             struct Attributes
             {

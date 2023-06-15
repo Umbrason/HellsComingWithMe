@@ -73,5 +73,6 @@
         "titleBar.inactiveBackground": "#63900099",
         "titleBar.inactiveForeground": "#e7e7e799"
     },
-    "peacock.color": "#639000"
+    "peacock.color": "#639000",    
+    "editor.suggest.insertMode": "insert",
 }
